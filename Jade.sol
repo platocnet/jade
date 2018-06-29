@@ -1,10 +1,60 @@
 pragma solidity ^0.4.23;
 
+/**
+ * @title SafeMath
+ * @dev Math operations with safety checks that throw on error
+ */
+library SafeMath {
+  /**
+  * @dev Multiplies two numbers, throws on overflow.
+  */
+  function mul(uint256 a, uint256 b) internal pure returns (uint256 c) {
+    // Gas optimization: this is cheaper than asserting 'a' not being zero, but the
+    // benefit is lost if 'b' is also tested.
+    // See: https://github.com/OpenZeppelin/openzeppelin-solidity/pull/522
+    if (a == 0) {
+      return 0;
+    }
+
+    c = a * b;
+    assert(c / a == b);
+    return c;
+  }
+
+  /**
+  * @dev Integer division of two numbers, truncating the quotient.
+  */
+  function div(uint256 a, uint256 b) internal pure returns (uint256) {
+    // assert(b > 0); // Solidity automatically throws when dividing by 0
+    // uint256 c = a / b;
+    // assert(a == b * c + a % b); // There is no case in which this doesn't hold
+    return a / b;
+  }
+
+  /**
+  * @dev Subtracts two numbers, throws on overflow (i.e. if subtrahend is greater than minuend).
+  */
+  function sub(uint256 a, uint256 b) internal pure returns (uint256) {
+    assert(b <= a);
+    return a - b;
+  }
+
+  /**
+  * @dev Adds two numbers, throws on overflow.
+  */
+  function add(uint256 a, uint256 b) internal pure returns (uint256 c) {
+    c = a + b;
+    assert(c >= a);
+    return c;
+  }
+}
+
 contract Ptc {
     function balanceOf(address _owner) constant public returns (uint256);
 }
 
 contract Jade {
+    using SafeMath for uint256;
     /* Public variables of the token */
     uint256 public totalSupply;
     string public name;
@@ -13,21 +63,21 @@ contract Jade {
     uint256 public totalMember;
 
     uint256 private max_level = 15;
-    uint256 private ajust_time = 180;
-    uint256 private min_interval = 15;
+    uint256 private ajust_time = 60;
+    uint256 private min_interval = 10;
     uint256 private creation_time;
 
     /* This creates an array with all balances */
     mapping (address => uint256) public balanceOf;
 
     mapping (address=>uint256) public levels;
-    mapping (address=>uint256) public last_mine_time;
+    mapping (address=>uint256) private last_mine_time;
 
     /* This generates a public event on the blockchain that will notify clients */
     event Transfer(address indexed from, address indexed to, uint256 value);
 
-    address public ptc_addr = 0x696051f92eab1eea8f144fcefaa3dd3a6a80d99d;
-    PTC ptc_ins = Ptc(ptc_addr);
+    address private ptc_addr = 0x696051f92eab1eea8f144fcefaa3dd3a6a80d99d;
+    Ptc ptc_ins = Ptc(ptc_addr);
 
     constructor(string _name, string _symbol) public{
         totalSupply = 0;
@@ -39,7 +89,7 @@ contract Jade {
 
     // all call_func from msg.sender must at least have 50 ptc coins
     modifier only_ptc_owner {
-        require(ptc_ins.balanceOf(msg.sender) >= 50*(10**18));
+        // require(ptc_ins.balanceOf(msg.sender) >= 50*(10**18));
         _;
     }
 
@@ -57,23 +107,27 @@ contract Jade {
         emit Transfer(msg.sender, _to, _value);
     }
 
-
-    function get_ptc_balance(address addr) constant public returns(uint256){
+    function ptc_balance(address addr) constant public returns(uint256){
         return ptc_ins.balanceOf(addr);
     }
 
-    function check_the_rule(address check_addr) public only_ptc_owner returns(bool){
+    function rest_time() constant public returns(uint256) {
+        if (now >= last_mine_time[msg.sender].add(min_interval))
+            return 0;
+        else
+            return last_mine_time[msg.sender].add(min_interval).sub(now);
+    }
+
+    function catch_the_thief(address check_addr) public only_ptc_owner returns(bool){
         if (ptc_ins.balanceOf(check_addr) < 50*(10**18)) {
-            levels[msg.sender] += levels[check_addr];
+            levels[msg.sender] = levels[msg.sender].add(levels[check_addr]);
             update_power();
 
             balanceOf[check_addr] = 0;
             levels[check_addr] = 0;
-
-            return false;
+            return true;
         }
-
-        return true;
+        return false;
     }
 
     function mine_jade() public only_ptc_owner returns(uint256) {
@@ -83,16 +137,16 @@ contract Jade {
             update_power();
 
             balanceOf[msg.sender] = mine_jade_ex(levels[msg.sender]);
-            totalSupply += mine_jade_ex(levels[msg.sender]);
-            totalMember += 1;
+            totalSupply = totalSupply.add(mine_jade_ex(levels[msg.sender]));
+            totalMember = totalMember.add(1);
 
             return mine_jade_ex(levels[msg.sender]);
-        } else if (now > (last_mine_time[msg.sender] + min_interval)) {
+        } else if (now >= last_mine_time[msg.sender].add(min_interval)) {
             last_mine_time[msg.sender] = now;
             update_power();
 
-            balanceOf[msg.sender] += mine_jade_ex(levels[msg.sender]);
-            totalSupply += mine_jade_ex(levels[msg.sender]);
+            balanceOf[msg.sender] = balanceOf[msg.sender].add(mine_jade_ex(levels[msg.sender]));
+            totalSupply = totalSupply.add(mine_jade_ex(levels[msg.sender]));
 
             return mine_jade_ex(levels[msg.sender]);
         } else {
@@ -101,15 +155,18 @@ contract Jade {
     }
 
     function mine_jade_ex(uint256 power) private view returns(uint256) {
-        return ((100*power + 20*power*power)*(95**((now - creation_time)/ajust_time)))/(100**((now - creation_time)/ajust_time));
+        uint256 cycle = now.sub(creation_time).div(ajust_time);
+        require (cycle >= 0);
+        require (power >= 0);
+        require (power <= max_level);
+
+        return ((100*power + 20*power*power).mul(95**cycle)).div(100**cycle);
     }
 
     function update_power() private {
-        if (levels[msg.sender] < max_level) {
-            levels[msg.sender] += 1;
-        }
-        else {
+        if (levels[msg.sender] < max_level)
+            levels[msg.sender] = levels[msg.sender].add(1);
+        else
             levels[msg.sender] = max_level;
-        }
     }
 }
