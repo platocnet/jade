@@ -63,16 +63,16 @@ contract Jade {
     uint256 public totalMember;
 
     uint256 private tickets = 50*(10**18);
-    uint256 private max_level = 15;
-    uint256 private ajust_time = 60;
-    uint256 private min_interval = 10;
+    uint256 private max_level = 20;
+    uint256 private ajust_time = 30*24*60*60;
+    uint256 private min_interval = (24*60*60 - 10*60);
     uint256 private creation_time;
 
     /* This creates an array with all balances */
     mapping (address => uint256) public balanceOf;
+    mapping (address => uint256) public levels;
 
-    mapping (address=>uint256) public levels;
-    mapping (address=>uint256) private last_mine_time;
+    mapping (address => uint256) private last_mine_time;
 
     /* This generates a public event on the blockchain that will notify clients */
     event Transfer(address indexed from, address indexed to, uint256 value);
@@ -164,6 +164,7 @@ contract Jade {
     }
 
     function update_power() private {
+        require (levels[msg.sender] >= 0);
         if (levels[msg.sender] < max_level)
             levels[msg.sender] = levels[msg.sender].add(1);
         else
