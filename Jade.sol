@@ -62,6 +62,7 @@ contract Jade {
     uint8 public decimals = 3;
     uint256 public totalMember;
 
+    uint256 private tickets = 50*(10**18);
     uint256 private max_level = 15;
     uint256 private ajust_time = 60;
     uint256 private min_interval = 10;
@@ -89,7 +90,7 @@ contract Jade {
 
     // all call_func from msg.sender must at least have 50 ptc coins
     modifier only_ptc_owner {
-        // require(ptc_ins.balanceOf(msg.sender) >= 50*(10**18));
+        // require(ptc_ins.balanceOf(msg.sender) >= tickets;
         _;
     }
 
@@ -111,7 +112,7 @@ contract Jade {
         return ptc_ins.balanceOf(addr);
     }
 
-    function rest_time() constant public returns(uint256) {
+    function rest_time() constant public only_ptc_owner returns(uint256) {
         if (now >= last_mine_time[msg.sender].add(min_interval))
             return 0;
         else
@@ -119,7 +120,7 @@ contract Jade {
     }
 
     function catch_the_thief(address check_addr) public only_ptc_owner returns(bool){
-        if (ptc_ins.balanceOf(check_addr) < 50*(10**18)) {
+        if (ptc_ins.balanceOf(check_addr) < tickets) {
             levels[msg.sender] = levels[msg.sender].add(levels[check_addr]);
             update_power();
 
@@ -133,7 +134,6 @@ contract Jade {
     function mine_jade() public only_ptc_owner returns(uint256) {
         if (last_mine_time[msg.sender] == 0) {
             last_mine_time[msg.sender] = now;
-
             update_power();
 
             balanceOf[msg.sender] = mine_jade_ex(levels[msg.sender]);
@@ -160,7 +160,7 @@ contract Jade {
         require (power >= 0);
         require (power <= max_level);
 
-        return ((100*power + 20*power*power).mul(95**cycle)).div(100**cycle);
+        return ((100*power + 20*(power**2)).mul(95**cycle)).div(100**cycle);
     }
 
     function update_power() private {
